@@ -3,12 +3,31 @@ import { View, Text, TouchableOpacity, Linking, StyleSheet } from 'react-native'
 import { db } from './firebase';
 import { addDoc, collection } from 'firebase/firestore';
 
-// ⬇️ REMPLACE plus tard ces URLs par TES liens affiliés (Amazon Partenaires, etc.)
 const OFFERS = [
-  { emoji: '🧳', name: 'Tapis 3D toutes saisons', why: 'Indispensable dès le 1er jour', url: 'https://www.amazon.fr/dp/EXEMPLE1' },
-  { emoji: '🎞️', name: 'Film protection PPF', why: 'Protège la peinture neuve', url: 'https://www.amazon.fr/dp/EXEMPLE2' },
-  { emoji: '🔌', name: 'Câble recharge Type 2', why: 'Pour recharger partout', url: 'https://www.amazon.fr/dp/EXEMPLE3' },
-  { emoji: '🏠', name: 'Wallbox domicile', why: 'Recharge complète la nuit', url: 'https://www.amazon.fr/dp/EXEMPLE4' },
+  {
+    emoji: '🧳',
+    name: 'Tapis 3D toutes saisons',
+    why: 'Indispensable dès le 1er jour',
+    url: 'https://www.amazon.fr/s?k=tapis+tesla+model+y',
+  },
+  {
+    emoji: '🎞️',
+    name: 'Film protection PPF',
+    why: 'Protège la peinture neuve',
+    url: 'https://www.amazon.fr/s?k=film+ppf+tesla+model+y',
+  },
+  {
+    emoji: '🔌',
+    name: 'Câble recharge Type 2',
+    why: 'Pour recharger partout',
+    url: 'https://www.amazon.fr/s?k=cable+recharge+type+2',
+  },
+  {
+    emoji: '🏠',
+    name: 'Wallbox domicile',
+    why: 'Recharge complète la nuit',
+    url: 'https://www.amazon.fr/s?k=wallbox+tesla',
+  },
 ];
 
 export default function ShopCard({ uid }) {
