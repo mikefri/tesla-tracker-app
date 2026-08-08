@@ -1,13 +1,13 @@
 import re
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
 
 # ⬇️ Remets tes vraies valeurs copiées depuis firebase.js
-FIREBASE_API_KEY = "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q"
-PROJECT_ID = "tesla-tracker-83265"
+FIREBASE_API_KEY = "TA_CLE_API"
+PROJECT_ID = "ton-project-id"
 
 # ---------- Sources HTML ----------
 FR_HTML = []
@@ -22,6 +22,7 @@ SOURCES = [(u, "html", "fr") for u in FR_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
 SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
+# ---------- Vocabulaire et formats de dates par langue ----------
 LANGS = {
     "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
@@ -127,7 +128,7 @@ for url, kind, lang in SOURCES:
         print(f"[{lang}] +{total_after - total_before} paires")
     time.sleep(0.3)
 
-# ---------- Discourse FR : chasse aux sujets ----------
+# ---------- Discourse FR : chasse aux sujets de livraison ----------
 try:
     r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
     topics = r.json().get("topics", [])
@@ -145,7 +146,7 @@ try:
 except Exception as e:
     print("[fr] recherche Discourse impossible :", e)
 
-# ---------- Rapports des utilisateurs de l'app (ton flywheel) ----------
+# ---------- Rapports des utilisateurs de l'app (flywheel) ----------
 try:
     url_rap = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/rapports?key={FIREBASE_API_KEY}&pageSize=100"
     rr = requests.get(url_rap, headers=HEADERS, timeout=30)
@@ -160,6 +161,7 @@ try:
 except Exception as e:
     print("[app] lecture rapports impossible :", e)
 
+# ---------- Statistiques globales ----------
 all_delays = sum(delays.values(), [])
 avg = round(sum(all_delays) / len(all_delays)) if all_delays else 0
 print("=== ANALYSE MULTI-SOURCES ===")
@@ -170,6 +172,52 @@ if all_delays:
     print(f"Min : {min(all_delays)} j | Max : {max(all_delays)} j")
 print("Exemples :", examples)
 
+# ---------- NOTIFICATIONS PUSH VERS LES ABONNÉS ----------
+def parse_fr(s):
+    try:
+        p = s.strip().split("/")
+        return datetime(int(p[2]), int(p[1]), int(p[0]))
+    except Exception:
+        return None
+
+try:
+    url_abo = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes?key={FIREBASE_API_KEY}&pageSize=100"
+    rr = requests.get(url_abo, headers=HEADERS, timeout=30)
+    docs = rr.json().get("documents", [])
+    print(f"[push] {len(docs)} abonné(s) vérifié(s)")
+    for docu in docs:
+        f = docu.get("fields", {})
+        token = f.get("token", {}).get("stringValue")
+        dc = f.get("date_commande", {}).get("stringValue", "")
+        doc_id = docu.get("name", "").split("/")[-1]
+        d1 = parse_fr(dc)
+        if not token or not d1 or not avg:
+            continue
+        est = d1 + timedelta(days=avg)
+        days_left = (est - datetime.now()).days
+        if -7 <= days_left <= 7:
+            body = f"🚗 Ta Model Y approche ! Livraison estimée autour du {est.strftime('%d/%m/%Y')}."
+        else:
+            last = f.get("last_notif_at", {}).get("stringValue", "")
+            if last:
+                try:
+                    if (datetime.now() - datetime.fromisoformat(last)).days < 7:
+                        continue
+                except ValueError:
+                    pass
+            body = f"📊 Suivi Tesla Tracker : livraison estimée autour du {est.strftime('%d/%m/%Y')} (moyenne communauté : {avg} j)."
+        rp = requests.post(
+            "https://exp.host/--/api/v2/push/send",
+            json=[{"to": token, "sound": "default", "title": "⚡ Tesla Tracker", "body": body}],
+            timeout=30,
+        )
+        print(f"[push] envoi : {rp.status_code}")
+        patch_url = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes/{doc_id}?key={FIREBASE_API_KEY}&updateMask.fieldPaths=last_notif_at"
+        requests.patch(patch_url, json={"fields": {"last_notif_at": {"stringValue": datetime.now().isoformat()}}}, timeout=30)
+except Exception as e:
+    print("[push] erreur notifications :", e)
+
+# ---------- Envoi des stats vers Firestore ----------
 url_firestore = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stats/global?key={FIREBASE_API_KEY}"
 payload = {
     "fields": {

@@ -24,6 +24,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "02292889-2e32-46f8-b67e-a631f3721315"
+      }
+    },
+    "owner": "micfri"
   }
 }
