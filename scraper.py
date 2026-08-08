@@ -22,7 +22,6 @@ SOURCES = [(u, "html", "fr") for u in FR_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
 SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
-# ---------- Vocabulaire et formats de dates ----------
 LANGS = {
     "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
@@ -38,7 +37,7 @@ DATE_RES = {
     "dot": r"(?<!\d)\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?!\d)",
 }
 
-delays = {"fr": [], "en": [], "de": []}
+delays = {"fr": [], "en": [], "de": [], "app": []}
 examples = []
 seen_pairs = set()
 orders_count = 0
@@ -126,9 +125,9 @@ for url, kind, lang in SOURCES:
     total_after = sum(len(v) for v in delays.values())
     if total_after > total_before:
         print(f"[{lang}] +{total_after - total_before} paires")
-    time.sleep(0.5)
+    time.sleep(0.3)
 
-# ---------- Discourse FR : chasse aux sujets de livraison ----------
+# ---------- Discourse FR : chasse aux sujets ----------
 try:
     r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
     topics = r.json().get("topics", [])
@@ -142,14 +141,29 @@ try:
                 analyze_text(post.get("cooked", ""), "fr")
         except Exception:
             continue
-        time.sleep(0.5)
+        time.sleep(0.3)
 except Exception as e:
     print("[fr] recherche Discourse impossible :", e)
 
-all_delays = delays["fr"] + delays["en"] + delays["de"]
+# ---------- Rapports des utilisateurs de l'app (ton flywheel) ----------
+try:
+    url_rap = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/rapports?key={FIREBASE_API_KEY}&pageSize=100"
+    rr = requests.get(url_rap, headers=HEADERS, timeout=30)
+    docs = rr.json().get("documents", [])
+    added = 0
+    for docu in docs:
+        dj = docu.get("fields", {}).get("delai_jours", {}).get("integerValue")
+        if dj:
+            delays["app"].append(int(dj))
+            added += 1
+    print(f"[app] {added} rapport(s) utilisateur(s) intégré(s)")
+except Exception as e:
+    print("[app] lecture rapports impossible :", e)
+
+all_delays = sum(delays.values(), [])
 avg = round(sum(all_delays) / len(all_delays)) if all_delays else 0
-print("=== ANALYSE MULTI-LANGUES ===")
-print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])}")
+print("=== ANALYSE MULTI-SOURCES ===")
+print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])} | APP : {len(delays['app'])}")
 print(f"TOTAL : {len(all_delays)} paires")
 print(f"Délai moyen global : {avg} jours")
 if all_delays:
@@ -166,6 +180,7 @@ payload = {
         "paires_fr": {"integerValue": str(len(delays['fr']))},
         "paires_en": {"integerValue": str(len(delays['en']))},
         "paires_de": {"integerValue": str(len(delays['de']))},
+        "paires_app": {"integerValue": str(len(delays['app']))},
         "updated_at": {"stringValue": datetime.now().isoformat()}
     }
 }
