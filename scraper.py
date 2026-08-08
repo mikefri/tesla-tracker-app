@@ -3,7 +3,10 @@ import time
 import requests
 from datetime import datetime, timedelta
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6,nl;q=0.5",
+}
 
 # ⬇️ Remets tes vraies valeurs copiées depuis firebase.js
 FIREBASE_API_KEY = "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q"
@@ -11,24 +14,44 @@ PROJECT_ID = "tesla-tracker-83265"
 
 # ---------- Sources HTML ----------
 FR_HTML = []
+# BlogTesla
 for start in range(0, 200, 20):
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
+# Automobile-propre
 FR_HTML.append("https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/")
 for page in range(2, 5):
     FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/?page={page}")
+# Nouveaux forums FR
+FR_HTML.append("https://www.tesla-motors.fr/forum/threads/suivi-des-commandes-model-y.12345/")
+FR_HTML.append("https://www.forum-tesla.com/topic/suivi-commandes-model-y/")
+
+# 🇩🇪 Allemand
+DE_HTML = []
+DE_HTML.append("https://www.tesla-forum.de/threads/model-y-lieferungen-2024-2025.87654/")
+DE_HTML.append("https://www.motor-talk.de/forum/tesla-model-y-bestellungen-t7890123.html")
+
+# 🇳🇱🇧🇪 Néerlandais/Belge
+NL_HTML = []
+NL_HTML.append("https://www.teslaforum.nl/index.php?topic=98765.0")
+NL_HTML.append("https://www.teslaclub.be/forum/threads/model-y-leveringen.54321/")
 
 SOURCES = [(u, "html", "fr") for u in FR_HTML]
+SOURCES += [(u, "html", "de") for u in DE_HTML]
+SOURCES += [(u, "html", "nl") for u in NL_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
 SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
+# ---------- Vocabulaire et formats de dates par langue ----------
 LANGS = {
-    "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
+    "fr": {"order": ["command", "cmde", "commandé"], "deliv": ["livr", "reçu", "reception", "livré"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
-    "en": {"order": ["ordered"], "deliv": ["delivered", "picked up"],
+    "en": {"order": ["ordered", "placed order"], "deliv": ["delivered", "picked up", "received"],
            "exclude": ["expected", "estimated", "scheduled"], "mode": "md"},
-    "de": {"order": ["bestellt"], "deliv": ["geliefert", "ausgeliefert"],
+    "de": {"order": ["bestellt", "bestellung"], "deliv": ["geliefert", "ausgeliefert", "erhalten"],
            "exclude": ["geplant", "erwartet", "voraussichtlich"], "mode": "dot"},
+    "nl": {"order": ["besteld", "bestelling"], "deliv": ["geleverd", "ontvangen"],
+           "exclude": ["verwacht", "geschat"], "mode": "dm"},
 }
 
 DATE_RES = {
@@ -37,7 +60,7 @@ DATE_RES = {
     "dot": r"(?<!\d)\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?!\d)",
 }
 
-delays = {"fr": [], "en": [], "de": [], "app": []}
+delays = {"fr": [], "en": [], "de": [], "nl": [], "app": []}
 pairs = []
 examples = []
 seen_pairs = set()
@@ -78,6 +101,8 @@ def dates_with_context(line, keywords, excludes, date_re):
 
 def analyze_text(text, lang):
     global orders_count, deliveries_count
+    if lang not in LANGS:
+        return
     cfg = LANGS[lang]
     date_re = DATE_RES[cfg["mode"]]
     for line in clean_lines(text):
@@ -102,7 +127,7 @@ def analyze_text(text, lang):
                 if 10 < days < 200:
                     delays[lang].append(days)
                     pairs.append((d1, days))
-                    if len(examples) < 8:
+                    if len(examples) < 10:
                         examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
 # ---------- Lecture des sources ----------
@@ -110,10 +135,11 @@ for url, kind, lang in SOURCES:
     total_before = sum(len(v) for v in delays.values())
     try:
         r = requests.get(url, headers=HEADERS, timeout=30)
-    except Exception:
+    except Exception as e:
+        print(f"[{lang}] Erreur réseau : {e}")
         continue
     if r.status_code != 200:
-        print(f"[{lang}] HTTP {r.status_code}")
+        print(f"[{lang}] HTTP {r.status_code} : {url[:60]}")
         continue
     if kind == "html":
         analyze_text(r.text, lang)
@@ -186,7 +212,7 @@ for d1, days in pairs:
 cohort_avg = {k: round(sum(v) / len(v)) for k, v in sorted(cohortes.items())}
 
 print("=== ANALYSE MULTI-SOURCES ===")
-print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])} | APP : {len(delays['app'])}")
+print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])} | NL : {len(delays['nl'])} | APP : {len(delays['app'])}")
 print(f"TOTAL : {n} paires | Moyenne : {avg} j | Médiane : {d_med} j | Min : {d_min} j | Max : {d_max} j")
 print("Cohortes (mois de commande -> délai moyen) :", cohort_avg)
 print("Exemples :", examples)
@@ -251,6 +277,7 @@ payload = {
         "paires_fr": {"integerValue": str(len(delays['fr']))},
         "paires_en": {"integerValue": str(len(delays['en']))},
         "paires_de": {"integerValue": str(len(delays['de']))},
+        "paires_nl": {"integerValue": str(len(delays['nl']))},
         "paires_app": {"integerValue": str(len(delays['app']))},
         "updated_at": {"stringValue": datetime.now().isoformat()}
     }
