@@ -65,7 +65,8 @@ for url in SOURCES:
         l = dates_with_context(line, DELIVERY_KW)
         orders_count += len(o)
         deliveries_count += len(l)
-        if o and l:
+        # Correctif 1 : on ignore si les deux dates sont identiques
+        if o and l and o[0] != l[0]:
             d1 = parse_date(o[0], now_year)
             d2 = parse_date(l[0], now_year)
             if d1 and d2:
@@ -75,7 +76,8 @@ for url in SOURCES:
                     except ValueError:
                         continue
                 days = (d2 - d1).days
-                if 7 < days < 400:
+                # Correctif 2 : uniquement les délais réalistes
+                if 10 < days < 200:
                     delays.append(days)
                     if len(examples) < 5:
                         examples.append(f"{o[0]} -> {l[0]} = {days} j")
