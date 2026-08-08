@@ -1,9 +1,13 @@
 import re
 import requests
+from datetime import datetime
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
 
-# Plusieurs pages des 2 gros sujets de suivi de commandes
+# ⬇️ COPIE ces 2 valeurs depuis ton fichier firebase.js (ce sont les mêmes)
+FIREBASE_API_KEY = "TA_CLE_API"
+PROJECT_ID = "ton-project-id"
+
 SOURCES = []
 for start in range(0, 100, 20):
     SOURCES.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
@@ -40,5 +44,19 @@ for url in SOURCES:
 print("=== STATISTIQUES COMMUNAUTÉ ===")
 print(f"Commandes datées trouvées : {len(orders)}")
 print(f"Livraisons datées trouvées : {len(deliveries)}")
-print("\nDernières commandes :", orders[-15:])
-print("Dernières livraisons :", deliveries[-15:])
+
+# === ENVOI VERS FIREBASE ===
+url_firestore = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stats/global?key={FIREBASE_API_KEY}"
+payload = {
+    "fields": {
+        "commandes_count": {"integerValue": str(len(orders))},
+        "livraisons_count": {"integerValue": str(len(deliveries))},
+        "dernieres_commandes": {"arrayValue": {"values": [{"stringValue": d} for d in orders[-10:]]}},
+        "dernieres_livraisons": {"arrayValue": {"values": [{"stringValue": d} for d in deliveries[-10:]]}},
+        "updated_at": {"stringValue": datetime.now().isoformat()}
+    }
+}
+r = requests.patch(url_firestore, json=payload)
+print("Envoi vers Firestore :", r.status_code)
+if r.status_code != 200:
+    print(r.text)
