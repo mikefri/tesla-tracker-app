@@ -22,25 +22,31 @@ for start in range(0, 200, 20):
 FR_HTML.append("https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/")
 for page in range(2, 5):
     FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/?page={page}")
-# Nouveaux forums FR
-FR_HTML.append("https://www.tesla-motors.fr/forum/threads/suivi-des-commandes-model-y.12345/")
-FR_HTML.append("https://www.forum-tesla.com/topic/suivi-commandes-model-y/")
 
-# 🇩🇪 Allemand
-DE_HTML = []
-DE_HTML.append("https://www.tesla-forum.de/threads/model-y-lieferungen-2024-2025.87654/")
-DE_HTML.append("https://www.motor-talk.de/forum/tesla-model-y-bestellungen-t7890123.html")
+# 🇩🇪 Allemagne - TFF Forum (TRÈS actif, usine de Berlin)
+DE_HTML = [
+    "https://tff-forum.de/t/das-neue-model-y-bestellungen-und-auslieferungen-2025-teil-1/376767",
+    "https://tff-forum.de/t/das-neue-model-y-bestellungen-und-auslieferungen-2025-teil-2/394777",
+    "https://tff-forum.de/t/das-neue-model-y-bestellungen-und-auslieferungen-2025-teil-3/401521",
+    "https://tff-forum.de/t/model-y-juniper-bestellungen-und-auslieferungen-2026-teil-2/410337",
+    "https://tff-forum.de/t/model-y-juniper-bestellungen-und-auslieferungen-2026-teil-3/413431",
+]
 
-# 🇳🇱🇧🇪 Néerlandais/Belge
+# 🇳🇱 Pays-Bas - Tweakers (énorme communauté)
 NL_HTML = []
-NL_HTML.append("https://www.teslaforum.nl/index.php?topic=98765.0")
-NL_HTML.append("https://www.teslaclub.be/forum/threads/model-y-leveringen.54321/")
+for page in range(0, 100, 20):
+    NL_HTML.append(f"https://gathering.tweakers.net/forum/list_messages/2222010/{page}")
+
+# 🇬🇧 UK - Tesla Motors Club
+EN_HTML = [
+    "https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/",
+]
 
 SOURCES = [(u, "html", "fr") for u in FR_HTML]
 SOURCES += [(u, "html", "de") for u in DE_HTML]
 SOURCES += [(u, "html", "nl") for u in NL_HTML]
+SOURCES += [(u, "html", "en") for u in EN_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
-SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
 # ---------- Vocabulaire et formats de dates par langue ----------
 LANGS = {
@@ -127,7 +133,7 @@ def analyze_text(text, lang):
                 if 10 < days < 200:
                     delays[lang].append(days)
                     pairs.append((d1, days))
-                    if len(examples) < 10:
+                    if len(examples) < 15:
                         examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
 # ---------- Lecture des sources ----------
@@ -136,10 +142,10 @@ for url, kind, lang in SOURCES:
     try:
         r = requests.get(url, headers=HEADERS, timeout=30)
     except Exception as e:
-        print(f"[{lang}] Erreur réseau : {e}")
+        print(f"[{lang}] Erreur réseau : {url[:50]}...")
         continue
     if r.status_code != 200:
-        print(f"[{lang}] HTTP {r.status_code} : {url[:60]}")
+        print(f"[{lang}] HTTP {r.status_code} : {url[:50]}")
         continue
     if kind == "html":
         analyze_text(r.text, lang)
