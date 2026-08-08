@@ -1,30 +1,44 @@
 import re
 import requests
 
-url = "https://www.blogtesla.fr/forum/viewtopic.php?t=25525"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
 
-r = requests.get(url, headers=HEADERS, timeout=30)
+# Plusieurs pages des 2 gros sujets de suivi de commandes
+SOURCES = []
+for start in range(0, 100, 20):
+    SOURCES.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
+    SOURCES.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
+SOURCES.append("https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/")
 
 def clean(t):
     t = re.sub(r"<[^>]+>", " ", t)
     return re.sub(r"\s+", " ", t)
 
-whole = clean(r.text).lower()
+ORDER_KW = ["command", "cmde"]
+DELIVERY_KW = ["livr", "reçu", "reception"]
 
-print("Occurrences 'commandé'  :", whole.count("commandé"))
-print("Occurrences 'livré'     :", whole.count("livré"))
-print("Occurrences 'production':", whole.count("production"))
-print("Occurrences 'bateau'    :", whole.count("bateau"))
+orders = []
+deliveries = []
 
-print("\nDates après 'commandé le' :", re.findall(r"commandé le ([\d/]+)", whole)[:10])
-print("Dates après 'livré le'    :", re.findall(r"livré le ([\d/]+)", whole)[:10])
+for url in SOURCES:
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=30)
+    except Exception as e:
+        print("Erreur:", url, e)
+        continue
+    if r.status_code != 200:
+        continue
+    text = clean(r.text).lower()
+    for m in re.finditer(r"\d{1,2}/\d{1,2}(?:/\d{2,4})?", text):
+        date = m.group(0)
+        before = text[max(0, m.start() - 40):m.start()]
+        if any(k in before for k in DELIVERY_KW):
+            deliveries.append(date)
+        elif any(k in before for k in ORDER_KW):
+            orders.append(date)
 
-chunks = re.split(r'class="post', r.text)[1:]
-shown = 0
-for c in chunks:
-    t = clean(c).lower()
-    if "livré" in t and shown < 2:
-        print("\n----- MESSAGE AVEC 'LIVRÉ' -----")
-        print(t[:500])
-        shown += 1
+print("=== STATISTIQUES COMMUNAUTÉ ===")
+print(f"Commandes datées trouvées : {len(orders)}")
+print(f"Livraisons datées trouvées : {len(deliveries)}")
+print("\nDernières commandes :", orders[-15:])
+print("Dernières livraisons :", deliveries[-15:])
