@@ -3,7 +3,7 @@ import time
 import requests
 from datetime import datetime, timedelta
 
-# Session qui garde les cookies (comme un vrai navigateur)
+# ---------- Session qui garde les cookies (comme un vrai navigateur) ----------
 session = requests.Session()
 
 HEADERS = {
@@ -151,7 +151,7 @@ def analyze_text(text, lang):
 for url, kind, lang in SOURCES:
     total_before = sum(len(v) for v in delays.values())
     try:
-        r = requests.get(url, headers=HEADERS, timeout=30)
+        r = session.get(url, headers=HEADERS, timeout=30)
     except Exception as e:
         print(f"[{lang}] Erreur réseau : {url[:50]}...")
         continue
@@ -174,13 +174,13 @@ for url, kind, lang in SOURCES:
 
 # ---------- Discourse FR : chasse aux sujets ----------
 try:
-    r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
+    r = session.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
     topics = r.json().get("topics", [])
     ids = [t.get("id") for t in topics if t.get("id")][:8]
     print(f"[fr] {len(ids)} sujets Discourse trouvés par la recherche")
     for tid in ids:
         try:
-            rt = requests.get(f"https://community.club-tesla.fr/t/{tid}.json", headers=HEADERS, timeout=30)
+            rt = session.get(f"https://community.club-tesla.fr/t/{tid}.json", headers=HEADERS, timeout=30)
             data = rt.json()
             for post in data.get("post_stream", {}).get("posts", []):
                 analyze_text(post.get("cooked", ""), "fr")
@@ -193,7 +193,7 @@ except Exception as e:
 # ---------- Rapports utilisateurs (flywheel) ----------
 try:
     url_rap = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/rapports?key={FIREBASE_API_KEY}&pageSize=100"
-    rr = requests.get(url_rap, headers=HEADERS, timeout=30)
+    rr = session.get(url_rap, headers=HEADERS, timeout=30)
     docs = rr.json().get("documents", [])
     added = 0
     for docu in docs:
@@ -244,7 +244,7 @@ def parse_fr(s):
 
 try:
     url_abo = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes?key={FIREBASE_API_KEY}&pageSize=100"
-    rr = requests.get(url_abo, headers=HEADERS, timeout=30)
+    rr = session.get(url_abo, headers=HEADERS, timeout=30)
     docs = rr.json().get("documents", [])
     print(f"[push] {len(docs)} abonné(s) vérifié(s)")
     for docu in docs:
@@ -268,14 +268,14 @@ try:
                 except ValueError:
                     pass
             body = f"📊 Suivi Tesla Tracker : livraison estimée autour du {est.strftime('%d/%m/%Y')} (moyenne communauté : {avg} j)."
-        rp = requests.post(
+        rp = session.post(
             "https://exp.host/--/api/v2/push/send",
             json=[{"to": token, "sound": "default", "title": "⚡ Tesla Tracker", "body": body}],
             timeout=30,
         )
         print(f"[push] envoi : {rp.status_code}")
         patch_url = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes/{doc_id}?key={FIREBASE_API_KEY}&updateMask.fieldPaths=last_notif_at"
-        requests.patch(patch_url, json={"fields": {"last_notif_at": {"stringValue": datetime.now().isoformat()}}}, timeout=30)
+        session.patch(patch_url, json={"fields": {"last_notif_at": {"stringValue": datetime.now().isoformat()}}}, timeout=30)
 except Exception as e:
     print("[push] erreur notifications :", e)
 
@@ -299,5 +299,5 @@ payload = {
         "updated_at": {"stringValue": datetime.now().isoformat()}
     }
 }
-r = requests.patch(url_firestore, json=payload)
+r = session.patch(url_firestore, json=payload)
 print("Envoi vers Firestore :", r.status_code)
