@@ -77,7 +77,7 @@ export default function App() {
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'default',
-          importance: Notifications.Importance.DEFAULT,
+          importance: Notifications.AndroidImportance.DEFAULT,
         });
       }
       const tokenData = await Notifications.getExpoPushTokenAsync();

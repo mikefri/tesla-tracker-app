@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "expo": "~54.0.35",
+    "expo-device": "~8.0.10",
     "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.17.1",
