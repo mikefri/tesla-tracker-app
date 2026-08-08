@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  StyleSheet, ScrollView, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+} from 'react-native';
 import { db } from './firebase';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
 
 export default function App() {
   const [orderNumber, setOrderNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'stats', 'global'));
+        if (snap.exists()) {
+          setStats(snap.data());
+        }
+      } catch (e) {
+        console.log('Erreur stats :', e);
+      }
+    };
+    loadStats();
+  }, []);
 
   const handleTrackOrder = async () => {
     const rn = orderNumber.trim().toUpperCase();
@@ -31,11 +48,32 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <StatusBar style="light" />
 
       <Text style={styles.logo}>⚡ Tesla Tracker</Text>
       <Text style={styles.subtitle}>Suivez la construction de votre Model Y en temps réel</Text>
+
+      {stats && (
+        <View style={styles.statsCard}>
+          <Text style={styles.statsTitle}>📊 Données communauté</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{stats.commandes_count}</Text>
+              <Text style={styles.statLabel}>commandes suivies</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{stats.livraisons_count}</Text>
+              <Text style={styles.statLabel}>livraisons rapportées</Text>
+            </View>
+          </View>
+          {stats.dernieres_livraisons ? (
+            <Text style={styles.statsFooter}>
+              Dernières livraisons : {stats.dernieres_livraisons.slice(-5).join(' • ')}
+            </Text>
+          ) : null}
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.label}>Numéro de commande (RN)</Text>
@@ -48,11 +86,7 @@ export default function App() {
           autoCapitalize="characters"
         />
         <TouchableOpacity style={styles.button} onPress={handleTrackOrder} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Suivre ma commande</Text>
-          )}
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Suivre ma commande</Text>}
         </TouchableOpacity>
       </View>
 
@@ -77,21 +111,26 @@ export default function App() {
           <Text style={styles.stepText}>Livraison</Text>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: '#0a0a0a' },
+  content: { padding: 20, alignItems: 'center', paddingTop: 60, paddingBottom: 40 },
   logo: { fontSize: 32, fontWeight: 'bold', color: '#ffffff', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 40 },
-  card: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, marginBottom: 40 },
+  subtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 30 },
+  statsCard: {
+    width: '100%', backgroundColor: '#101820', borderRadius: 16,
+    padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#1e3a4f',
+  },
+  statsTitle: { color: '#4fc3f7', fontSize: 14, fontWeight: 'bold', marginBottom: 12 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10 },
+  statBox: { alignItems: 'center' },
+  statNumber: { color: '#fff', fontSize: 26, fontWeight: 'bold' },
+  statLabel: { color: '#888', fontSize: 11 },
+  statsFooter: { color: '#666', fontSize: 11, textAlign: 'center' },
+  card: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, marginBottom: 30 },
   label: { color: '#ccc', fontSize: 14, marginBottom: 8 },
   input: {
     backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#333', borderRadius: 10,
