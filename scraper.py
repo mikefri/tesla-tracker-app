@@ -22,7 +22,6 @@ SOURCES = [(u, "html", "fr") for u in FR_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
 SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
-# ---------- Vocabulaire et formats de dates par langue ----------
 LANGS = {
     "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
@@ -39,6 +38,7 @@ DATE_RES = {
 }
 
 delays = {"fr": [], "en": [], "de": [], "app": []}
+pairs = []
 examples = []
 seen_pairs = set()
 orders_count = 0
@@ -101,6 +101,7 @@ def analyze_text(text, lang):
                 days = (d2 - d1).days
                 if 10 < days < 200:
                     delays[lang].append(days)
+                    pairs.append((d1, days))
                     if len(examples) < 8:
                         examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
@@ -128,7 +129,7 @@ for url, kind, lang in SOURCES:
         print(f"[{lang}] +{total_after - total_before} paires")
     time.sleep(0.3)
 
-# ---------- Discourse FR : chasse aux sujets de livraison ----------
+# ---------- Discourse FR : chasse aux sujets ----------
 try:
     r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
     topics = r.json().get("topics", [])
@@ -146,30 +147,48 @@ try:
 except Exception as e:
     print("[fr] recherche Discourse impossible :", e)
 
-# ---------- Rapports des utilisateurs de l'app (flywheel) ----------
+# ---------- Rapports utilisateurs (flywheel) ----------
 try:
     url_rap = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/rapports?key={FIREBASE_API_KEY}&pageSize=100"
     rr = requests.get(url_rap, headers=HEADERS, timeout=30)
     docs = rr.json().get("documents", [])
     added = 0
     for docu in docs:
-        dj = docu.get("fields", {}).get("delai_jours", {}).get("integerValue")
+        f = docu.get("fields", {})
+        dj = f.get("delai_jours", {}).get("integerValue")
+        dc = f.get("date_commande", {}).get("stringValue", "")
         if dj:
             delays["app"].append(int(dj))
             added += 1
+            d1 = parse_date(dc, now_year, "dm")
+            if d1:
+                pairs.append((d1, int(dj)))
     print(f"[app] {added} rapport(s) utilisateur(s) intégré(s)")
 except Exception as e:
     print("[app] lecture rapports impossible :", e)
 
-# ---------- Statistiques globales ----------
+# ---------- Statistiques globales + cohortes ----------
 all_delays = sum(delays.values(), [])
 avg = round(sum(all_delays) / len(all_delays)) if all_delays else 0
+sorted_delays = sorted(all_delays)
+n = len(sorted_delays)
+if n:
+    d_min = sorted_delays[0]
+    d_max = sorted_delays[-1]
+    d_med = sorted_delays[n // 2] if n % 2 == 1 else (sorted_delays[n // 2 - 1] + sorted_delays[n // 2]) // 2
+else:
+    d_min = d_max = d_med = 0
+
+cohortes = {}
+for d1, days in pairs:
+    key = f"{d1.year}-{d1.month:02d}"
+    cohortes.setdefault(key, []).append(days)
+cohort_avg = {k: round(sum(v) / len(v)) for k, v in sorted(cohortes.items())}
+
 print("=== ANALYSE MULTI-SOURCES ===")
 print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])} | APP : {len(delays['app'])}")
-print(f"TOTAL : {len(all_delays)} paires")
-print(f"Délai moyen global : {avg} jours")
-if all_delays:
-    print(f"Min : {min(all_delays)} j | Max : {max(all_delays)} j")
+print(f"TOTAL : {n} paires | Moyenne : {avg} j | Médiane : {d_med} j | Min : {d_min} j | Max : {d_max} j")
+print("Cohortes (mois de commande -> délai moyen) :", cohort_avg)
 print("Exemples :", examples)
 
 # ---------- NOTIFICATIONS PUSH VERS LES ABONNÉS ----------
@@ -224,7 +243,11 @@ payload = {
         "commandes_count": {"integerValue": str(orders_count)},
         "livraisons_count": {"integerValue": str(deliveries_count)},
         "delai_moyen_jours": {"integerValue": str(avg)},
-        "delais_analyses": {"integerValue": str(len(all_delays))},
+        "delais_analyses": {"integerValue": str(n)},
+        "delai_min": {"integerValue": str(d_min)},
+        "delai_max": {"integerValue": str(d_max)},
+        "delai_mediane": {"integerValue": str(d_med)},
+        "cohortes": {"mapValue": {"fields": {k: {"integerValue": str(v)} for k, v in cohort_avg.items()}}},
         "paires_fr": {"integerValue": str(len(delays['fr']))},
         "paires_en": {"integerValue": str(len(delays['en']))},
         "paires_de": {"integerValue": str(len(delays['de']))},
