@@ -9,20 +9,20 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 FIREBASE_API_KEY = "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q"
 PROJECT_ID = "tesla-tracker-83265"
 
-# ---------- Sources ----------
+# ---------- Sources HTML ----------
 FR_HTML = []
 for start in range(0, 200, 20):
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
-for page in range(1, 5):
-    FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/page/{page}/")
+FR_HTML.append("https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/")
+for page in range(2, 5):
+    FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/?page={page}")
 
 SOURCES = [(u, "html", "fr") for u in FR_HTML]
 SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
-SOURCES.append(("https://www.reddit.com/r/TeslaModelY/search.json?q=ordered+delivered&restrict_sr=1&limit=100", "reddit", "en"))
-SOURCES.append(("https://www.reddit.com/search.json?q=tesla+bestellt+geliefert&limit=100", "reddit", "de"))
+SOURCES.append(("https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/", "html", "en"))
 
-# ---------- Vocabulaire et formats de dates par langue ----------
+# ---------- Vocabulaire et formats de dates ----------
 LANGS = {
     "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
@@ -104,6 +104,7 @@ def analyze_text(text, lang):
                     if len(examples) < 8:
                         examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
+# ---------- Lecture des sources ----------
 for url, kind, lang in SOURCES:
     total_before = sum(len(v) for v in delays.values())
     try:
@@ -122,18 +123,28 @@ for url, kind, lang in SOURCES:
                 analyze_text(post.get("cooked", ""), lang)
         except Exception:
             pass
-    elif kind == "reddit":
-        try:
-            data = r.json()
-            for child in data.get("data", {}).get("children", []):
-                d = child.get("data", {})
-                analyze_text((d.get("title", "") or "") + "\n" + (d.get("selftext", "") or ""), lang)
-        except Exception:
-            pass
     total_after = sum(len(v) for v in delays.values())
     if total_after > total_before:
         print(f"[{lang}] +{total_after - total_before} paires")
     time.sleep(0.5)
+
+# ---------- Discourse FR : chasse aux sujets de livraison ----------
+try:
+    r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
+    topics = r.json().get("topics", [])
+    ids = [t.get("id") for t in topics if t.get("id")][:8]
+    print(f"[fr] {len(ids)} sujets Discourse trouvés par la recherche")
+    for tid in ids:
+        try:
+            rt = requests.get(f"https://community.club-tesla.fr/t/{tid}.json", headers=HEADERS, timeout=30)
+            data = rt.json()
+            for post in data.get("post_stream", {}).get("posts", []):
+                analyze_text(post.get("cooked", ""), "fr")
+        except Exception:
+            continue
+        time.sleep(0.5)
+except Exception as e:
+    print("[fr] recherche Discourse impossible :", e)
 
 all_delays = delays["fr"] + delays["en"] + delays["de"]
 avg = round(sum(all_delays) / len(all_delays)) if all_delays else 0
