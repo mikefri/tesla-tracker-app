@@ -10,6 +10,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase
 import {
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
 } from 'firebase/auth';
+import ShopCard from './ShopCard';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -56,6 +57,7 @@ function AuthScreen() {
       <Text style={styles.subtitle}>
         {isLogin ? 'Content de te revoir !' : 'Crée ton compte pour suivre ta Model Y'}
       </Text>
+      
       <View style={styles.card}>
         <Text style={styles.label}>Email</Text>
         <TextInput
@@ -305,7 +307,7 @@ export default function App() {
           </View>
         ) : null}
       </View>
-
+<ShopCard uid={user.uid} />
       <View style={styles.card}>
         <Text style={styles.label}>🔔 Alertes de suivi</Text>
         <TouchableOpacity style={styles.buttonOrange} onPress={enableAlerts}>
