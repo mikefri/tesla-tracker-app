@@ -12,6 +12,7 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
 } from 'firebase/auth';
 import ShopCard from './ShopCard';
+import TrendsCard from './TrendsCard';
 
 const { width } = Dimensions.get('window');
 
@@ -255,6 +256,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [estimate, setEstimate] = useState(null);
+  const [showTrends, setShowTrends] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -526,9 +528,7 @@ export default function App() {
             <Text style={styles.actionSub}>les alertes</Text>
           </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionCard} onPress={() => {
-          alert('Fonctionnalité en cours de développement');
-        }} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.actionCard} onPress={() => setShowTrends(!showTrends)} activeOpacity={0.8}>
           <LinearGradient
             colors={['#3498db', '#2980b9']}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -540,6 +540,9 @@ export default function App() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* TENDANCES (affichées au clic) */}
+      {showTrends && <TrendsCard stats={stats} orderDate={orderDate} />}
 
       {/* SIGNALEMENT */}
       <View style={styles.card}>
