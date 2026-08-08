@@ -2,16 +2,16 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-// ⬇️ REMPLACE ce bloc par le firebaseConfig copié depuis la console Firebase
+// ⬇️ COLLE ICI ta vraie config copiée depuis la console Firebase
 const firebaseConfig = {
-  apiKey: "TA_CLE",
+  apiKey: "AIzaSy...",
   authDomain: "tesla-tracker-xxxx.firebaseapp.com",
   projectId: "tesla-tracker-xxxx",
-  storageBucket: "tesla-tracker-xxxx.appspot.com",
+  storageBucket: "tesla-tracker-xxxx.firebasestorage.app",
   messagingSenderId: "123456789",
   appId: "1:123456789:web:xxxxx"
 };
-// ⬆️ Fin du bloc à remplacer
+// ⬆️ garde TES valeurs, pas celles-ci
 
 const app = initializeApp(firebaseConfig);
 
