@@ -1,40 +1,28 @@
 import re
 import time
 import requests
+import cloudscraper
 from datetime import datetime, timedelta
-
-# ---------- Session qui garde les cookies (comme un vrai navigateur) ----------
-session = requests.Session()
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6,nl;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Cache-Control": "max-age=0",
-}
 
 # ⬇️ Remets tes vraies valeurs copiées depuis firebase.js
 FIREBASE_API_KEY = "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q"
 PROJECT_ID = "tesla-tracker-83265"
 
-# ---------- Sources HTML ----------
+# ---------- Headers simples (marchent pour les sources FR) ----------
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+}
+
+# ---------- Sources ----------
 FR_HTML = []
-# BlogTesla
 for start in range(0, 200, 20):
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
     FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
-# Automobile-propre
 FR_HTML.append("https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/")
 for page in range(2, 5):
     FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/?page={page}")
 
-# 🇩🇪 Allemagne - TFF Forum (TRÈS actif, usine de Berlin)
+# 🇩🇪 Allemagne - TFF Forum
 DE_HTML = [
     "https://tff-forum.de/t/das-neue-model-y-bestellungen-und-auslieferungen-2025-teil-1/376767",
     "https://tff-forum.de/t/das-neue-model-y-bestellungen-und-auslieferungen-2025-teil-2/394777",
@@ -43,23 +31,20 @@ DE_HTML = [
     "https://tff-forum.de/t/model-y-juniper-bestellungen-und-auslieferungen-2026-teil-3/413431",
 ]
 
-# 🇳🇱 Pays-Bas - Tweakers (énorme communauté)
-NL_HTML = []
-for page in range(0, 100, 20):
-    NL_HTML.append(f"https://gathering.tweakers.net/forum/list_messages/2222010/{page}")
+# 🇳🇱 Pays-Bas - Tweakers
+NL_HTML = [f"https://gathering.tweakers.net/forum/list_messages/2222010/{p}" for p in range(0, 100, 20)]
 
-# 🇬🇧 UK - Tesla Motors Club
-EN_HTML = [
-    "https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/",
-]
+# 🇬🇧 UK
+EN_HTML = ["https://teslamotorsclub.com/tmc/threads/tesla-shipping-movements.319517/"]
 
-SOURCES = [(u, "html", "fr") for u in FR_HTML]
-SOURCES += [(u, "html", "de") for u in DE_HTML]
-SOURCES += [(u, "html", "nl") for u in NL_HTML]
-SOURCES += [(u, "html", "en") for u in EN_HTML]
-SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
+# On distingue les sources "simples" (requests) des "bloquées" (cloudscraper)
+SOURCES_NORMAL = [(u, "html", "fr") for u in FR_HTML] + \
+                 [(u, "html", "en") for u in EN_HTML] + \
+                 [("https://community.club-tesla.fr/t/2990.json", "discourse", "fr")]
+SOURCES_CLOUDFLARE = [(u, "html", "de") for u in DE_HTML] + \
+                     [(u, "html", "nl") for u in NL_HTML]
 
-# ---------- Vocabulaire et formats de dates par langue ----------
+# ---------- Vocabulaire et formats ----------
 LANGS = {
     "fr": {"order": ["command", "cmde", "commandé"], "deliv": ["livr", "reçu", "reception", "livré"],
            "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
@@ -147,13 +132,15 @@ def analyze_text(text, lang):
                     if len(examples) < 15:
                         examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
-# ---------- Lecture des sources ----------
-for url, kind, lang in SOURCES:
+# ---------- Création du scraper Cloudflare ----------
+scraper_cf = cloudscraper.create_scraper()
+
+# ---------- Lecture des sources normales (requests) ----------
+for url, kind, lang in SOURCES_NORMAL:
     total_before = sum(len(v) for v in delays.values())
     try:
-        r = session.get(url, headers=HEADERS, timeout=30)
-    except Exception as e:
-        print(f"[{lang}] Erreur réseau : {url[:50]}...")
+        r = requests.get(url, headers=HEADERS, timeout=30)
+    except Exception:
         continue
     if r.status_code != 200:
         print(f"[{lang}] HTTP {r.status_code} : {url[:50]}")
@@ -174,13 +161,13 @@ for url, kind, lang in SOURCES:
 
 # ---------- Discourse FR : chasse aux sujets ----------
 try:
-    r = session.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
+    r = requests.get("https://community.club-tesla.fr/search.json?q=livr%C3%A9", headers=HEADERS, timeout=30)
     topics = r.json().get("topics", [])
     ids = [t.get("id") for t in topics if t.get("id")][:8]
     print(f"[fr] {len(ids)} sujets Discourse trouvés par la recherche")
     for tid in ids:
         try:
-            rt = session.get(f"https://community.club-tesla.fr/t/{tid}.json", headers=HEADERS, timeout=30)
+            rt = requests.get(f"https://community.club-tesla.fr/t/{tid}.json", headers=HEADERS, timeout=30)
             data = rt.json()
             for post in data.get("post_stream", {}).get("posts", []):
                 analyze_text(post.get("cooked", ""), "fr")
@@ -190,10 +177,28 @@ try:
 except Exception as e:
     print("[fr] recherche Discourse impossible :", e)
 
-# ---------- Rapports utilisateurs (flywheel) ----------
+# ---------- Lecture des sources Cloudflare (DE, NL) ----------
+for url, kind, lang in SOURCES_CLOUDFLARE:
+    total_before = sum(len(v) for v in delays.values())
+    try:
+        r = scraper_cf.get(url, timeout=30)
+    except Exception as e:
+        print(f"[{lang}] Erreur CF : {url[:50]}")
+        continue
+    if r.status_code != 200:
+        print(f"[{lang}] CF HTTP {r.status_code} : {url[:50]}")
+        continue
+    if kind == "html":
+        analyze_text(r.text, lang)
+    total_after = sum(len(v) for v in delays.values())
+    if total_after > total_before:
+        print(f"[{lang} CF] +{total_after - total_before} paires")
+    time.sleep(0.5)
+
+# ---------- Rapports utilisateurs ----------
 try:
     url_rap = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/rapports?key={FIREBASE_API_KEY}&pageSize=100"
-    rr = session.get(url_rap, headers=HEADERS, timeout=30)
+    rr = requests.get(url_rap, headers=HEADERS, timeout=30)
     docs = rr.json().get("documents", [])
     added = 0
     for docu in docs:
@@ -234,7 +239,7 @@ print(f"TOTAL : {n} paires | Moyenne : {avg} j | Médiane : {d_med} j | Min : {d
 print("Cohortes (mois de commande -> délai moyen) :", cohort_avg)
 print("Exemples :", examples)
 
-# ---------- NOTIFICATIONS PUSH VERS LES ABONNÉS ----------
+# ---------- NOTIFICATIONS PUSH ----------
 def parse_fr(s):
     try:
         p = s.strip().split("/")
@@ -244,7 +249,7 @@ def parse_fr(s):
 
 try:
     url_abo = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes?key={FIREBASE_API_KEY}&pageSize=100"
-    rr = session.get(url_abo, headers=HEADERS, timeout=30)
+    rr = requests.get(url_abo, headers=HEADERS, timeout=30)
     docs = rr.json().get("documents", [])
     print(f"[push] {len(docs)} abonné(s) vérifié(s)")
     for docu in docs:
@@ -268,18 +273,18 @@ try:
                 except ValueError:
                     pass
             body = f"📊 Suivi Tesla Tracker : livraison estimée autour du {est.strftime('%d/%m/%Y')} (moyenne communauté : {avg} j)."
-        rp = session.post(
+        rp = requests.post(
             "https://exp.host/--/api/v2/push/send",
             json=[{"to": token, "sound": "default", "title": "⚡ Tesla Tracker", "body": body}],
             timeout=30,
         )
         print(f"[push] envoi : {rp.status_code}")
         patch_url = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/abonnes/{doc_id}?key={FIREBASE_API_KEY}&updateMask.fieldPaths=last_notif_at"
-        session.patch(patch_url, json={"fields": {"last_notif_at": {"stringValue": datetime.now().isoformat()}}}, timeout=30)
+        requests.patch(patch_url, json={"fields": {"last_notif_at": {"stringValue": datetime.now().isoformat()}}}, timeout=30)
 except Exception as e:
     print("[push] erreur notifications :", e)
 
-# ---------- Envoi des stats vers Firestore ----------
+# ---------- Envoi vers Firestore ----------
 url_firestore = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stats/global?key={FIREBASE_API_KEY}"
 payload = {
     "fields": {
@@ -299,5 +304,5 @@ payload = {
         "updated_at": {"stringValue": datetime.now().isoformat()}
     }
 }
-r = session.patch(url_firestore, json=payload)
+r = requests.patch(url_firestore, json=payload)
 print("Envoi vers Firestore :", r.status_code)
