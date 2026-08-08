@@ -9,24 +9,36 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 FIREBASE_API_KEY = "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q"
 PROJECT_ID = "tesla-tracker-83265"
 
-# --- Sources HTML (phpBB / Invision) ---
-HTML_SOURCES = []
+# ---------- Sources ----------
+FR_HTML = []
 for start in range(0, 200, 20):
-    HTML_SOURCES.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
-    HTML_SOURCES.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
+    FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25525&start={start}")
+    FR_HTML.append(f"https://www.blogtesla.fr/forum/viewtopic.php?t=25522&start={start}")
 for page in range(1, 5):
-    HTML_SOURCES.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/page/{page}/")
+    FR_HTML.append(f"https://forums.automobile-propre.com/topic/suivi-des-commandes-et-des-livraisons-de-la-tesla-model-y-avec-des-morceaux-collector-22418/page/{page}/")
 
-# --- Sources Discourse (API JSON officielle) ---
-DISCOURSE_SOURCES = [
-    "https://community.club-tesla.fr/t/2990.json",
-]
+SOURCES = [(u, "html", "fr") for u in FR_HTML]
+SOURCES.append(("https://community.club-tesla.fr/t/2990.json", "discourse", "fr"))
+SOURCES.append(("https://www.reddit.com/r/TeslaModelY/search.json?q=ordered+delivered&restrict_sr=1&limit=100", "reddit", "en"))
+SOURCES.append(("https://www.reddit.com/search.json?q=tesla+bestellt+geliefert&limit=100", "reddit", "de"))
 
-ORDER_KW = ["command", "cmde"]
-DELIVERY_KW = ["livr", "reçu", "reception"]
-DATE_RE = r"\d{1,2}/\d{1,2}(?:/\d{2,4})?"
+# ---------- Vocabulaire et formats de dates par langue ----------
+LANGS = {
+    "fr": {"order": ["command", "cmde"], "deliv": ["livr", "reçu", "reception"],
+           "exclude": ["prévu", "prevu", "estim"], "mode": "dm"},
+    "en": {"order": ["ordered"], "deliv": ["delivered", "picked up"],
+           "exclude": ["expected", "estimated", "scheduled"], "mode": "md"},
+    "de": {"order": ["bestellt"], "deliv": ["geliefert", "ausgeliefert"],
+           "exclude": ["geplant", "erwartet", "voraussichtlich"], "mode": "dot"},
+}
 
-delays = []
+DATE_RES = {
+    "dm": r"(?<!\d)\d{1,2}/\d{1,2}(?:/\d{2,4})?(?!\d)",
+    "md": r"(?<!\d)\d{1,2}/\d{1,2}(?:/\d{2,4})?(?!\d)",
+    "dot": r"(?<!\d)\d{1,2}\.\d{1,2}(?:\.\d{2,4})?(?!\d)",
+}
+
+delays = {"fr": [], "en": [], "de": []}
 examples = []
 seen_pairs = set()
 orders_count = 0
@@ -38,9 +50,13 @@ def clean_lines(t):
     t = re.sub(r"[ \t]+", " ", t)
     return t.lower().split("\n")
 
-def parse_date(s, base_year):
-    parts = s.split("/")
-    d, m = int(parts[0]), int(parts[1])
+def parse_date(s, base_year, mode):
+    sep = "." if mode == "dot" else "/"
+    parts = s.split(sep)
+    if mode == "md":
+        m, d = int(parts[0]), int(parts[1])
+    else:
+        d, m = int(parts[0]), int(parts[1])
     if len(parts) == 3:
         y = int(parts[2]) if len(parts[2]) == 4 else 2000 + int(parts[2])
     else:
@@ -50,30 +66,32 @@ def parse_date(s, base_year):
     except ValueError:
         return None
 
-def dates_with_context(line, keywords):
+def dates_with_context(line, keywords, excludes, date_re):
     result = []
-    for m in re.finditer(DATE_RE, line):
+    for m in re.finditer(date_re, line):
         before = line[max(0, m.start() - 40):m.start()]
-        if "prévu" in before or "prevu" in before or "estim" in before:
+        if any(x in before for x in excludes):
             continue
         if any(k in before for k in keywords):
             result.append(m.group(0))
     return result
 
-def analyze_text(text):
+def analyze_text(text, lang):
     global orders_count, deliveries_count
+    cfg = LANGS[lang]
+    date_re = DATE_RES[cfg["mode"]]
     for line in clean_lines(text):
-        o = dates_with_context(line, ORDER_KW)
-        l = dates_with_context(line, DELIVERY_KW)
+        o = dates_with_context(line, cfg["order"], cfg["exclude"], date_re)
+        l = dates_with_context(line, cfg["deliv"], cfg["exclude"], date_re)
         orders_count += len(o)
         deliveries_count += len(l)
         if o and l and o[0] != l[0]:
-            key = (o[0], l[0])
+            key = (lang, o[0], l[0])
             if key in seen_pairs:
                 continue
             seen_pairs.add(key)
-            d1 = parse_date(o[0], now_year)
-            d2 = parse_date(l[0], now_year)
+            d1 = parse_date(o[0], now_year, cfg["mode"])
+            d2 = parse_date(l[0], now_year, cfg["mode"])
             if d1 and d2:
                 if (d2 - d1).days < 7:
                     try:
@@ -82,37 +100,49 @@ def analyze_text(text):
                         continue
                 days = (d2 - d1).days
                 if 10 < days < 200:
-                    delays.append(days)
-                    if len(examples) < 6:
-                        examples.append(f"{o[0]} -> {l[0]} = {days} j")
+                    delays[lang].append(days)
+                    if len(examples) < 8:
+                        examples.append(f"[{lang}] {o[0]} -> {l[0]} = {days} j")
 
-# --- Lecture des sources HTML ---
-for url in HTML_SOURCES:
+for url, kind, lang in SOURCES:
+    total_before = sum(len(v) for v in delays.values())
     try:
         r = requests.get(url, headers=HEADERS, timeout=30)
     except Exception:
         continue
-    if r.status_code == 200:
-        analyze_text(r.text)
-    time.sleep(0.3)
-
-# --- Lecture des sources Discourse (JSON) ---
-for url in DISCOURSE_SOURCES:
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        data = r.json()
-        for post in data.get("post_stream", {}).get("posts", []):
-            analyze_text(post.get("cooked", ""))
-    except Exception:
+    if r.status_code != 200:
+        print(f"[{lang}] HTTP {r.status_code}")
         continue
-    time.sleep(0.3)
+    if kind == "html":
+        analyze_text(r.text, lang)
+    elif kind == "discourse":
+        try:
+            data = r.json()
+            for post in data.get("post_stream", {}).get("posts", []):
+                analyze_text(post.get("cooked", ""), lang)
+        except Exception:
+            pass
+    elif kind == "reddit":
+        try:
+            data = r.json()
+            for child in data.get("data", {}).get("children", []):
+                d = child.get("data", {})
+                analyze_text((d.get("title", "") or "") + "\n" + (d.get("selftext", "") or ""), lang)
+        except Exception:
+            pass
+    total_after = sum(len(v) for v in delays.values())
+    if total_after > total_before:
+        print(f"[{lang}] +{total_after - total_before} paires")
+    time.sleep(0.5)
 
-avg = round(sum(delays) / len(delays)) if delays else 0
-print("=== ANALYSE DES DÉLAIS (MULTI-SOURCES) ===")
-print(f"Paires commande→livraison trouvées : {len(delays)}")
-print(f"Délai moyen observé : {avg} jours")
-if delays:
-    print(f"Min : {min(delays)} j | Max : {max(delays)} j")
+all_delays = delays["fr"] + delays["en"] + delays["de"]
+avg = round(sum(all_delays) / len(all_delays)) if all_delays else 0
+print("=== ANALYSE MULTI-LANGUES ===")
+print(f"FR : {len(delays['fr'])} | EN : {len(delays['en'])} | DE : {len(delays['de'])}")
+print(f"TOTAL : {len(all_delays)} paires")
+print(f"Délai moyen global : {avg} jours")
+if all_delays:
+    print(f"Min : {min(all_delays)} j | Max : {max(all_delays)} j")
 print("Exemples :", examples)
 
 url_firestore = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents/stats/global?key={FIREBASE_API_KEY}"
@@ -121,7 +151,10 @@ payload = {
         "commandes_count": {"integerValue": str(orders_count)},
         "livraisons_count": {"integerValue": str(deliveries_count)},
         "delai_moyen_jours": {"integerValue": str(avg)},
-        "delais_analyses": {"integerValue": str(len(delays))},
+        "delais_analyses": {"integerValue": str(len(all_delays))},
+        "paires_fr": {"integerValue": str(len(delays['fr']))},
+        "paires_en": {"integerValue": str(len(delays['en']))},
+        "paires_de": {"integerValue": str(len(delays['de']))},
         "updated_at": {"stringValue": datetime.now().isoformat()}
     }
 }
