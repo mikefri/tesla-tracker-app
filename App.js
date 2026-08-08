@@ -5,8 +5,11 @@ import {
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { db } from './firebase';
-import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { addDoc, collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import {
+  onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+} from 'firebase/auth';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -18,13 +21,81 @@ Notifications.setNotificationHandler({
   }),
 });
 
+function AuthScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  const handleAuth = async () => {
+    if (!email.trim() || password.length < 6) {
+      alert('Email valide + mot de passe de 6 caractères minimum.');
+      return;
+    }
+    setLoading(true);
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
+      }
+    } catch (e) {
+      if (e.code === 'auth/email-already-in-use') alert('Cet email a déjà un compte : connecte-toi.');
+      else if (e.code === 'auth/weak-password') alert('Mot de passe trop faible (6 caractères min).');
+      else if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') alert('Email ou mot de passe incorrect.');
+      else alert('Erreur : ' + e.code);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.authContainer}>
+      <StatusBar style="light" />
+      <Text style={styles.logo}>⚡ Tesla Tracker</Text>
+      <Text style={styles.subtitle}>
+        {isLogin ? 'Content de te revoir !' : 'Crée ton compte pour suivre ta Model Y'}
+      </Text>
+      <View style={styles.card}>
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          style={styles.input} placeholder="ton@email.com" placeholderTextColor="#666"
+          value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none"
+        />
+        <Text style={styles.label}>Mot de passe</Text>
+        <TextInput
+          style={styles.input} placeholder="6 caractères minimum" placeholderTextColor="#666"
+          value={password} onChangeText={setPassword} secureTextEntry
+        />
+        <TouchableOpacity style={styles.button} onPress={handleAuth} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{isLogin ? 'Se connecter' : 'Créer mon compte'}</Text>}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setIsLogin(!isLogin)} style={styles.toggleBox}>
+          <Text style={styles.toggleText}>
+            {isLogin ? 'Pas de compte ? Crée-en un' : 'Déjà un compte ? Connecte-toi'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [orderDate, setOrderDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [estimate, setEstimate] = useState(null);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthReady(true);
+    });
+  }, []);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -37,6 +108,25 @@ export default function App() {
     };
     loadStats();
   }, []);
+
+  // Retrouve SA commande à la connexion
+  useEffect(() => {
+    if (!user) return;
+    const loadMine = async () => {
+      try {
+        const q = query(collection(db, 'commandes'), where('uid', '==', user.uid));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const d = snap.docs[0].data();
+          if (d.rn) setOrderNumber(d.rn);
+          if (d.date_commande) setOrderDate(d.date_commande);
+        }
+      } catch (e) {
+        console.log('Erreur commande perso :', e);
+      }
+    };
+    loadMine();
+  }, [user]);
 
   const parseDateFR = (s) => {
     const p = s.trim().split('/');
@@ -84,6 +174,7 @@ export default function App() {
       const token = tokenData.data;
       await addDoc(collection(db, 'abonnes'), {
         token: token,
+        uid: user.uid,
         date_commande: orderDate.trim(),
         createdAt: new Date().toISOString(),
       });
@@ -91,9 +182,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: token,
-          sound: 'default',
-          title: '⚡ Tesla Tracker',
+          to: token, sound: 'default', title: '⚡ Tesla Tracker',
           body: '✅ Alertes activées ! On surveille ta Model Y.',
         }),
       });
@@ -117,6 +206,7 @@ export default function App() {
     }
     try {
       await addDoc(collection(db, 'rapports'), {
+        uid: user.uid,
         date_commande: orderDate.trim(),
         date_livraison: deliveryDate.trim(),
         delai_jours: days,
@@ -138,13 +228,13 @@ export default function App() {
     setLoading(true);
     try {
       await addDoc(collection(db, 'commandes'), {
+        uid: user.uid,
         rn: rn,
         date_commande: orderDate.trim(),
         createdAt: new Date().toISOString(),
         status: 'en_attente',
       });
       alert('✅ Commande enregistrée dans Firebase !');
-      setOrderNumber('');
     } catch (error) {
       alert('Erreur : ' + error.message);
     } finally {
@@ -152,9 +242,27 @@ export default function App() {
     }
   };
 
+  if (!authReady) {
+    return (
+      <View style={styles.authContainer}>
+        <StatusBar style="light" />
+        <ActivityIndicator color="#e82127" size="large" />
+      </View>
+    );
+  }
+
+  if (!user) return <AuthScreen />;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <StatusBar style="light" />
+
+      <View style={styles.userRow}>
+        <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+        <TouchableOpacity onPress={() => signOut(auth)} style={styles.logoutBtn}>
+          <Text style={styles.logoutText}>Sortir</Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.logo}>⚡ Tesla Tracker</Text>
       <Text style={styles.subtitle}>Suivez la construction de votre Model Y en temps réel</Text>
@@ -182,12 +290,8 @@ export default function App() {
       <View style={styles.card}>
         <Text style={styles.label}>Ta date de commande</Text>
         <TextInput
-          style={styles.input}
-          placeholder="JJ/MM/AAAA (ex: 10/06/2026)"
-          placeholderTextColor="#666"
-          value={orderDate}
-          onChangeText={setOrderDate}
-          keyboardType="numbers-and-punctuation"
+          style={styles.input} placeholder="JJ/MM/AAAA (ex: 10/06/2026)" placeholderTextColor="#666"
+          value={orderDate} onChangeText={setOrderDate} keyboardType="numbers-and-punctuation"
         />
         <TouchableOpacity style={styles.buttonGreen} onPress={computeEstimate}>
           <Text style={styles.buttonText}>🎯 Calculer ma prédiction</Text>
@@ -212,12 +316,8 @@ export default function App() {
       <View style={styles.card}>
         <Text style={styles.label}>🎉 Tu as reçu ta Tesla ?</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Date de livraison (JJ/MM/AAAA)"
-          placeholderTextColor="#666"
-          value={deliveryDate}
-          onChangeText={setDeliveryDate}
-          keyboardType="numbers-and-punctuation"
+          style={styles.input} placeholder="Date de livraison (JJ/MM/AAAA)" placeholderTextColor="#666"
+          value={deliveryDate} onChangeText={setDeliveryDate} keyboardType="numbers-and-punctuation"
         />
         <TouchableOpacity style={styles.buttonBlue} onPress={reportDelivery}>
           <Text style={styles.buttonText}>Signaler ma livraison</Text>
@@ -227,12 +327,8 @@ export default function App() {
       <View style={styles.card}>
         <Text style={styles.label}>Numéro de commande (RN)</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Ex: RN123456"
-          placeholderTextColor="#666"
-          value={orderNumber}
-          onChangeText={setOrderNumber}
-          autoCapitalize="characters"
+          style={styles.input} placeholder="Ex: RN123456" placeholderTextColor="#666"
+          value={orderNumber} onChangeText={setOrderNumber} autoCapitalize="characters"
         />
         <TouchableOpacity style={styles.button} onPress={handleTrackOrder} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Suivre ma commande</Text>}
@@ -266,7 +362,22 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
-  content: { padding: 20, alignItems: 'center', paddingTop: 60, paddingBottom: 40 },
+  authContainer: {
+    flex: 1, backgroundColor: '#0a0a0a', alignItems: 'center',
+    justifyContent: 'center', padding: 20,
+  },
+  content: { padding: 20, alignItems: 'center', paddingTop: 40, paddingBottom: 40 },
+  userRow: {
+    width: '100%', flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 10,
+  },
+  userEmail: { color: '#888', fontSize: 12, flex: 1 },
+  logoutBtn: {
+    backgroundColor: '#333', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 10,
+  },
+  logoutText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  toggleBox: { marginTop: 15, alignItems: 'center' },
+  toggleText: { color: '#4fc3f7', fontSize: 13 },
   logo: { fontSize: 32, fontWeight: 'bold', color: '#ffffff', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 30 },
   statsCard: {
