@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
-  StyleSheet, ScrollView, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+  StyleSheet, ScrollView, Platform, View, Text, TextInput, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { db } from './firebase';
 import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function App() {
   const [orderNumber, setOrderNumber] = useState('');
@@ -45,6 +57,50 @@ export default function App() {
     }
     d.setDate(d.getDate() + Number(stats.delai_moyen_jours));
     setEstimate(d.toLocaleDateString('fr-FR'));
+  };
+
+  const enableAlerts = async () => {
+    if (!Device.isDevice) {
+      alert('Les notifications nécessitent un vrai téléphone.');
+      return;
+    }
+    if (!parseDateFR(orderDate)) {
+      alert('Entre d\'abord ta date de commande (JJ/MM/AAAA).');
+      return;
+    }
+    try {
+      const perm = await Notifications.requestPermissionsAsync();
+      if (!perm.granted) {
+        alert('Permission notifications refusée.');
+        return;
+      }
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.Importance.DEFAULT,
+        });
+      }
+      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const token = tokenData.data;
+      await addDoc(collection(db, 'abonnes'), {
+        token: token,
+        date_commande: orderDate.trim(),
+        createdAt: new Date().toISOString(),
+      });
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: token,
+          sound: 'default',
+          title: '⚡ Tesla Tracker',
+          body: '✅ Alertes activées ! On surveille ta Model Y.',
+        }),
+      });
+      alert('🔔 Alertes activées ! Regarde tes notifications.');
+    } catch (e) {
+      alert('Erreur notifications : ' + e.message);
+    }
   };
 
   const reportDelivery = async () => {
@@ -147,6 +203,13 @@ export default function App() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.label}>🔔 Alertes de suivi</Text>
+        <TouchableOpacity style={styles.buttonOrange} onPress={enableAlerts}>
+          <Text style={styles.buttonText}>Activer les alertes</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.label}>🎉 Tu as reçu ta Tesla ?</Text>
         <TextInput
           style={styles.input}
@@ -224,6 +287,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: '#e82127', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   buttonGreen: { backgroundColor: '#2ecc71', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   buttonBlue: { backgroundColor: '#3498db', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  buttonOrange: { backgroundColor: '#f39c12', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   estimateBox: { marginTop: 15 },
   estimateText: { color: '#2ecc71', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
