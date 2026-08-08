@@ -202,4 +202,37 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container
+  container: { flex: 1, backgroundColor: '#0a0a0a' },
+  content: { padding: 20, alignItems: 'center', paddingTop: 60, paddingBottom: 40 },
+  logo: { fontSize: 32, fontWeight: 'bold', color: '#ffffff', marginBottom: 8 },
+  subtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 30 },
+  statsCard: {
+    width: '100%', backgroundColor: '#101820', borderRadius: 16,
+    padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#1e3a4f',
+  },
+  statsTitle: { color: '#4fc3f7', fontSize: 14, fontWeight: 'bold', marginBottom: 12 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  statBox: { alignItems: 'center' },
+  statNumber: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  statLabel: { color: '#888', fontSize: 10 },
+  card: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, marginBottom: 20 },
+  label: { color: '#ccc', fontSize: 14, marginBottom: 8 },
+  input: {
+    backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#333', borderRadius: 10,
+    color: '#fff', paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, marginBottom: 15,
+  },
+  button: { backgroundColor: '#e82127', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  buttonGreen: { backgroundColor: '#2ecc71', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  buttonBlue: { backgroundColor: '#3498db', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  estimateBox: { marginTop: 15 },
+  estimateText: { color: '#2ecc71', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
+  estimateSub: { color: '#888', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  timeline: { width: '100%', paddingLeft: 10 },
+  step: { flexDirection: 'row', alignItems: 'center' },
+  dot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#333', marginRight: 12 },
+  dotDone: { backgroundColor: '#2ecc71' },
+  dotActive: { backgroundColor: '#e82127' },
+  stepText: { color: '#ccc', fontSize: 14 },
+  line: { width: 2, height: 24, backgroundColor: '#333', marginLeft: 6, marginVertical: 4 },
+});
