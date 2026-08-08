@@ -4,12 +4,12 @@ import { getAuth } from 'firebase/auth';
 
 // ⬇️ COLLE ICI ta vraie config copiée depuis la console Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
-  authDomain: "tesla-tracker-xxxx.firebaseapp.com",
-  projectId: "tesla-tracker-xxxx",
-  storageBucket: "tesla-tracker-xxxx.firebasestorage.app",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:xxxxx"
+  apiKey: "AIzaSyDHYMRJpVUXCE5JA7YhODPd45SJQwwWI1Q",
+  authDomain: "tesla-tracker-83265.firebaseapp.com",
+  projectId: "tesla-tracker-83265",
+  storageBucket: "tesla-tracker-83265.firebasestorage.app",
+  messagingSenderId: "600609675439",
+  appId: "1:600609675439:web:192308ea8c8eae5ecadc5a"
 };
 // ⬆️ garde TES valeurs, pas celles-ci
 
